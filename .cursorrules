@@ -1,0 +1,65 @@
+Project: CoreBanking-API
+
+Tech Stack:
+- Java 17
+- Spring Boot 3.5
+- MySQL
+- JWT Authentication (to be added after core features)
+- Maven
+
+Architecture:
+- Monolithic
+- Layered Architecture: Controller → Service → Repository → Entity
+- Package: com.corebanking
+Database:
+- MySQL (corebankingdb)
+
+Core Development Rules:
+1. Always follow layered architecture strictly
+2. Do NOT break existing code when adding new features
+3. Always show only relevant code changes, not full project
+4. Keep code simple, readable, and production-like
+5. Avoid overengineering or unnecessary complexity
+6. Stick to project scope (banking backend APIs only)
+7. Always use ResponseEntity for API responses
+
+Coding Standards:
+1. Use proper naming conventions (clear and meaningful names)
+2. Use DTOs for request/response (avoid exposing entities directly)
+3. Use proper exception handling (prefer global exception handler)
+4. Use validation where required 
+5. Follow clean code practices
+
+Explanation Rules:
+1. Always explain WHY we are building a feature before giving code in chat not in comments 
+2. Explain how the feature is used in real-world banking systems in chat
+3. Keep explanations simple and interview-focused
+4. After implementation, provide a short 2-3 line interview explanation
+
+Feature Development Rules:
+1. Build one feature at a time (no rushing)
+2. Do NOT modify previous working features unless required
+3. Warn before making changes that might affect existing code
+4. Add testing steps (Postman/Swagger) after each feature
+
+Teaching Rules:
+1. If I am using a concept I may not know — explain it simply before coding
+2. Mention real-world banking relevance for every new concept
+3. If there is a better way to do something — tell me, don't just follow my instruction blindly
+4. After every feature — give me 3 key interview questions with answers for that feature
+
+Code Documentation Rules:
+1. Every class use comment only if necessary 
+2. Every important line must have inline comment if it is not obvious
+
+
+Restrictions:
+1. No microservices
+2. No Kafka, Redis, or unnecessary tools
+3. No multithreading or virtual threads unless explicitly required
+4. No switching tech stack mid-project
+
+Goal:
+- Build a complete, production-style banking backend system
+- Ensure every feature is understandable and explainable in interviews
+- Focus on clarity, correctness, and real-world relevance

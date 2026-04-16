@@ -9,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
-import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -35,14 +34,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			@NonNull HttpServletResponse response,
 			@NonNull FilterChain filterChain) throws ServletException, IOException {
 
-		String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-		if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-			filterChain.doFilter(request, response);
-			return;
-		}
-
-		String token = authHeader.substring(7).trim();
-		if (token.isEmpty()) {
+		String token = extractBearerToken(request.getHeader(HttpHeaders.AUTHORIZATION));
+		if (token == null) {
 			filterChain.doFilter(request, response);
 			return;
 		}
@@ -51,23 +44,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			String email = jwtService.extractEmail(token);
 			if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 				UserDetails userDetails = userDetailsService.loadUserByUsername(email);
-				if (jwtService.isTokenValid(token, userDetails)) {
-					UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-							userDetails,
-							null,
-							userDetails.getAuthorities());
-					authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-					SecurityContextHolder.getContext().setAuthentication(authentication);
+				// Disabled users should never get authenticated even with a previously issued token.
+				if (!userDetails.isEnabled()) {
+					writeForbidden(response, "User account is disabled");
+					return;
 				}
+				// Fail fast here instead of letting invalid tokens reach protected endpoints.
+				if (!jwtService.isTokenValid(token, userDetails)) {
+					writeUnauthorized(response, "Invalid or expired token");
+					return;
+				}
+				UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+						userDetails,
+						null,
+						userDetails.getAuthorities());
+				authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+				SecurityContextHolder.getContext().setAuthentication(authentication);
 			}
 		} catch (UsernameNotFoundException ex) {
 			writeUnauthorized(response, "Invalid or expired token");
-			return;
-		} catch (DisabledException ex) {
-			response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-			response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-			response.getWriter().write("{\"message\":\"User account is disabled\"}");
 			return;
 		} catch (JwtException | IllegalArgumentException ex) {
 			writeUnauthorized(response, "Invalid or expired token");
@@ -77,8 +72,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		filterChain.doFilter(request, response);
 	}
 
+	private static String extractBearerToken(String authHeader) {
+		if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+			return null;
+		}
+		String token = authHeader.substring(7).trim();
+		return token.isEmpty() ? null : token;
+	}
+
 	private static void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
-		response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+		writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, message);
+	}
+
+	private static void writeForbidden(HttpServletResponse response, String message) throws IOException {
+		writeJsonError(response, HttpServletResponse.SC_FORBIDDEN, message);
+	}
+
+	private static void writeJsonError(HttpServletResponse response, int status, String message) throws IOException {
+		response.setStatus(status);
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 		String escaped = message.replace("\"", "\\\"");

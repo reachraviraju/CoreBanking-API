@@ -2,6 +2,7 @@ package com.corebanking.auth.service;
 
 import com.corebanking.auth.dto.LoginRequest;
 import com.corebanking.auth.dto.LoginResponse;
+import com.corebanking.common.exception.ResourceNotFoundException;
 import com.corebanking.security.JwtProperties;
 import com.corebanking.security.JwtService;
 import com.corebanking.security.UserPrincipal;
@@ -27,22 +28,28 @@ public class AuthService {
 	@Transactional(readOnly = true)
 	public LoginResponse login(LoginRequest request) {
 		String email = request.email().trim().toLowerCase();
-		Authentication authentication = authenticationManager.authenticate(
-				new UsernamePasswordAuthenticationToken(email, request.password()));
+		UsernamePasswordAuthenticationToken credentials =
+				new UsernamePasswordAuthenticationToken(email, request.password());
+		Authentication authentication = authenticationManager.authenticate(credentials);
 
 		UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
 		User user = userRepository.findById(principal.getUserId())
-				.orElseThrow();
+				.orElseThrow(() -> new ResourceNotFoundException("Authenticated user not found"));
 
 		String token = jwtService.generateToken(user);
-		UserResponse userResponse = new UserResponse(
+		UserResponse userResponse = toUserResponse(user);
+
+		return new LoginResponse(token, "Bearer", jwtProperties.expirationMs(), userResponse);
+	}
+
+	private static UserResponse toUserResponse(User user) {
+		return new UserResponse(
 				user.getId(),
 				user.getEmail(),
 				user.getFullName(),
 				user.getPhone(),
 				user.isEnabled(),
-				user.getCreatedAt());
-
-		return new LoginResponse(token, "Bearer", jwtProperties.expirationMs(), userResponse);
+				user.getCreatedAt()
+		);
 	}
 }

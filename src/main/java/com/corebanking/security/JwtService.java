@@ -39,7 +39,9 @@ public class JwtService {
 
 	public boolean isTokenValid(String token, UserDetails userDetails) {
 		String email = extractEmail(token);
-		return email.equalsIgnoreCase(userDetails.getUsername()) && !isTokenExpired(token);
+		return userDetails.isEnabled()
+				&& email.equalsIgnoreCase(userDetails.getUsername())
+				&& !isTokenExpired(token);
 	}
 
 	private boolean isTokenExpired(String token) {
@@ -55,10 +57,10 @@ public class JwtService {
 	}
 
 	private SecretKey signingKey() {
-		byte[] bytes = jwtProperties.secret().getBytes(StandardCharsets.UTF_8);
-		if (bytes.length < 32) {
+		byte[] keyBytes = jwtProperties.secret().getBytes(StandardCharsets.UTF_8);
+		if (keyBytes.length < 32) {
 			throw new IllegalStateException("security.jwt.secret must be at least 32 bytes for HS256");
 		}
-		return Keys.hmacShaKeyFor(bytes);
+		return Keys.hmacShaKeyFor(keyBytes);
 	}
 }

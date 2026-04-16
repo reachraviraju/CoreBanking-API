@@ -1,204 +1,160 @@
-# 🚀 Core Banking API (Spring Boot)
+﻿# Core Banking API
 
-A **production-style banking backend system** handling secure user authentication and financial transactions, built using **Spring Boot, JWT, and MySQL**.
+A production-style banking backend built with Spring Boot, JWT security, and MySQL.
 
----
+This project models a real-world core banking flow:
 
-## 📌 Overview
+`User -> Account -> Transaction -> Notification`
 
-This project simulates a **real-world banking system** with support for:
+## Why This Project
 
-* User registration & authentication
-* Account management
-* Money transactions (deposit, withdraw, transfer)
-* Transaction history tracking
-* Notification system
+This codebase is designed to demonstrate how financial systems are built with:
 
-Designed using **clean architecture and backend best practices**, focusing on **security, data integrity, and scalability**.
+- clean layered architecture
+- secure authentication and authorization
+- data integrity during money movement
+- traceable transaction records
 
----
+## Key Features
 
-## 🚀 Key Highlights
+- User registration with validation and BCrypt password hashing
+- JWT-based login with stateless API security
+- Account creation and account listing per user
+- Money operations:
+  - deposit
+  - withdraw
+  - transfer between accounts
+- Notification center with unread count and mark-as-read flow
+- Global exception handling with consistent API error responses
 
-* Designed complete banking workflow (**User → Account → Transaction**)
-* Implemented secure authentication using **JWT and BCrypt hashing**
-* Ensured **data consistency and integrity** during financial operations
-* Built REST APIs following **layered architecture principles**
-* Developed system with focus on **transaction traceability and reliability**
+## Architecture
 
----
+Layered architecture is used throughout the project:
 
-## ⚙️ Tech Stack
+`Controller -> Service -> Repository -> Entity`
 
-* **Java 17**
-* **Spring Boot 3**
-* **Spring Security (JWT)**
-* **Spring Data JPA (Hibernate)**
-* **MySQL**
-* **Maven**
-* **Swagger (OpenAPI)**
+Highlights:
 
----
+- DTO-based request/response contracts
+- JPA repositories for persistence
+- Service-layer business rules for banking operations
+- Access guard checks to prevent cross-user data access
+- Pessimistic locking for safe concurrent transfers
 
-## 🔐 Key Features
+## Tech Stack
 
-### 👤 User Management
+- Java 17
+- Spring Boot 3.5
+- Spring Security
+- JWT (`jjwt`)
+- Spring Data JPA / Hibernate
+- MySQL
+- Maven
+- SpringDoc OpenAPI (Swagger)
 
-* Register new users
-* Secure password storage using **BCrypt hashing**
-* Authenticate users using **JWT tokens**
+## API Snapshot
 
-### 🏦 Account Management
-
-* Create bank accounts linked to users
-* Maintain account balance and status
-
-### 💸 Transactions
-
-* Deposit money
-* Withdraw money with validation
-* Transfer funds between accounts
-* Maintain complete transaction history
-
-### 🔔 Notifications
-
-* Track user notifications
-* Support read/unread status
-
----
-
-## 🧠 System Design Highlights
-
-* **Layered Architecture**
-  Controller → Service → Repository → Database
-
-* **Security**
-
-  * JWT-based authentication
-  * Stateless API design
-  * Secure password hashing using BCrypt
-
-* **Data Integrity**
-
-  * Transactions act as **source of truth**
-  * Balance maintained as **optimized state**
-  * Validations prevent invalid operations
-
----
-
-## 📡 API Endpoints (Key)
-
-### 🔐 Authentication
+### Auth and Users
 
 ```text
-POST   /api/v1/users              → Register new user
-POST   /api/v1/auth/login        → Authenticate user and generate JWT
+POST   /api/v1/users                  Register user
+POST   /api/v1/auth/login             Login and get JWT
 ```
 
-### 🏦 Account
+### Accounts
 
 ```text
-POST   /api/v1/users/{userId}/accounts   → Create account
-GET    /api/v1/users/{userId}/accounts   → Fetch user accounts
+POST   /api/v1/users/{userId}/accounts    Create account
+GET    /api/v1/users/{userId}/accounts    List user accounts
 ```
 
-### 💸 Transactions
+### Transactions
 
 ```text
-POST   /api/v1/accounts/{id}/deposit      → Deposit money
-POST   /api/v1/accounts/{id}/withdraw     → Withdraw money
-POST   /api/v1/accounts/{id}/transfer     → Transfer funds
-GET    /api/v1/accounts/{id}/transactions → View transaction history
+POST   /api/v1/accounts/{accountId}/deposit       Deposit money
+POST   /api/v1/accounts/{accountId}/withdraw      Withdraw money
+POST   /api/v1/accounts/{accountId}/transfer      Transfer money
+GET    /api/v1/accounts/{accountId}/transactions  Account transaction history
 ```
 
-### 🔔 Notifications
+### Notifications
 
 ```text
 GET    /api/v1/users/{userId}/notifications
-PATCH  /api/v1/users/{userId}/notifications/{id}/read
+GET    /api/v1/users/{userId}/notifications/unread-count
+PATCH  /api/v1/users/{userId}/notifications/{notificationId}/read
 ```
 
-👉 Interactive API documentation available via Swagger UI
+## Security Model
 
----
+- Public endpoints:
+  - `POST /api/v1/users`
+  - `POST /api/v1/auth/login`
+- All other endpoints require `Authorization: Bearer <token>`
+- Access is scoped to the authenticated user via guard checks
+- Disabled users and invalid/expired tokens are blocked
 
-## 🚀 How to Run
+## Getting Started
 
-### 1. Clone Repository
+### 1. Clone
 
 ```bash
-git clone https://github.com/your-username/CoreBanking-API.git
+git clone https://github.com/reachraviraju/CoreBanking-API.git
 cd CoreBanking-API
 ```
 
----
+### 2. Configure Environment
 
-### 2. Configure Database
+The app reads credentials from environment variables with safe defaults for local dev:
 
-Update `application.properties`:
+- `MYSQL_USER` (default: `root`)
+- `MYSQL_PASSWORD` (default: `admin`)
+- `JWT_SECRET` (must be at least 32 bytes in production)
+- `JWT_EXPIRATION_MS` (default: `86400000`)
 
-```properties
-spring.datasource.url=jdbc:mysql://localhost:3306/corebankingdb
-spring.datasource.username=your_username
-spring.datasource.password=your_password
-spring.jpa.hibernate.ddl-auto=update
-```
-
----
-
-### 3. Run Application
+### 3. Run the Application
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
----
+On Windows:
 
-### 4. Access Swagger UI
-
-```
-http://localhost:8080/swagger-ui.html
+```powershell
+.\mvnw.cmd spring-boot:run
 ```
 
----
+### 4. Open API Docs
 
-## 🧪 API Flow Example
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
 
-1. Register User → `/api/v1/users`
-2. Login → `/api/v1/auth/login`
-3. Create Account → `/api/v1/users/{userId}/accounts`
-4. Perform Transactions (Deposit / Withdraw / Transfer)
-5. View Transaction History
+## Local Testing
 
----
+Run tests:
 
-## ⚠️ Important Concepts Implemented
+```bash
+./mvnw test
+```
 
-* Secure password hashing (BCrypt)
-* JWT-based authentication
-* RESTful API design
-* Exception handling
-* Data consistency & validation
-* Transaction traceability
+The context test is configured with in-memory H2 so tests do not depend on local MySQL availability.
 
----
+## Example Flow
 
-## 📈 Future Improvements
+1. Register a user
+2. Login to receive JWT
+3. Create an account for that user
+4. Deposit funds
+5. Withdraw or transfer funds
+6. Read notifications and mark them as read
 
-* Role-based access control (Admin/User)
-* Improved transaction atomicity handling
-* Rate limiting & security hardening
-* Migration to microservices architecture
+## Future Improvements
 
----
+- Role-based authorization (admin/user roles)
+- Audit trail enrichment for compliance-style reporting
+- Rate limiting and abuse protection
+- Idempotency support for payment-like operations
 
-## 👨‍💻 Author
+## Author
 
-**Ravi Raju Chintalapudi**
-Java Backend Developer
-
----
-
-## ⭐ Final Note
-
-This project emphasizes **backend system design, security, and real-world implementation practices**, making it a strong foundation for scalable production systems.
+Ravi Raju Chintalapudi

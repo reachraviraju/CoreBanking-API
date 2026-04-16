@@ -34,21 +34,19 @@ public class TransactionService {
 
 	@Transactional
 	public TransactionResponse deposit(Long accountId, MoneyMovementRequest request) {
-		accessGuard.requireAccountOwner(accountId);
-		Account account = accountRepository.findByIdForUpdate(accountId)
-				.orElseThrow(() -> new ResourceNotFoundException("Account not found with id: " + accountId));
-		requireActive(account);
+		Account account = getOwnedActiveAccountForUpdate(accountId);
+		BigDecimal amount = normalizeAndValidateAmount(request.amount());
+		String narration = trimToNull(request.narration());
 
-		BigDecimal amount = normalizeAmount(request.amount());
 		account.setBalance(account.getBalance().add(amount));
+		Transaction saved = transactionRepository.save(buildTransaction(
+				account,
+				null,
+				TransactionType.DEPOSIT,
+				amount,
+				narration
+		));
 
-		Transaction tx = new Transaction();
-		tx.setAccount(account);
-		tx.setTransactionType(TransactionType.DEPOSIT);
-		tx.setAmount(amount);
-		tx.setNarration(trimToNull(request.narration()));
-
-		Transaction saved = transactionRepository.save(tx);
 		notificationService.createInApp(
 				account.getUser(),
 				"Deposit successful",
@@ -57,31 +55,32 @@ public class TransactionService {
 						account.getCurrency(),
 						amount,
 						maskAccountNumber(account.getAccountNumber()),
-						saved.getReference()));
+						saved.getReference()
+				)
+		);
+
 		return toResponse(saved);
 	}
 
 	@Transactional
 	public TransactionResponse withdraw(Long accountId, MoneyMovementRequest request) {
-		accessGuard.requireAccountOwner(accountId);
-		Account account = accountRepository.findByIdForUpdate(accountId)
-				.orElseThrow(() -> new ResourceNotFoundException("Account not found with id: " + accountId));
-		requireActive(account);
+		Account account = getOwnedActiveAccountForUpdate(accountId);
+		BigDecimal amount = normalizeAndValidateAmount(request.amount());
+		String narration = trimToNull(request.narration());
 
-		BigDecimal amount = normalizeAmount(request.amount());
 		if (account.getBalance().compareTo(amount) < 0) {
 			throw new InsufficientFundsException("Insufficient balance for withdrawal");
 		}
 
 		account.setBalance(account.getBalance().subtract(amount));
+		Transaction saved = transactionRepository.save(buildTransaction(
+				account,
+				null,
+				TransactionType.WITHDRAWAL,
+				amount,
+				narration
+		));
 
-		Transaction tx = new Transaction();
-		tx.setAccount(account);
-		tx.setTransactionType(TransactionType.WITHDRAWAL);
-		tx.setAmount(amount);
-		tx.setNarration(trimToNull(request.narration()));
-
-		Transaction saved = transactionRepository.save(tx);
 		notificationService.createInApp(
 				account.getUser(),
 				"Withdrawal successful",
@@ -90,14 +89,18 @@ public class TransactionService {
 						account.getCurrency(),
 						amount,
 						maskAccountNumber(account.getAccountNumber()),
-						saved.getReference()));
+						saved.getReference()
+				)
+		);
+
 		return toResponse(saved);
 	}
 
 	@Transactional(readOnly = true)
 	public List<TransactionResponse> listForAccount(Long accountId) {
 		accessGuard.requireAccountOwner(accountId);
-		return transactionRepository.findByAccount_IdOrderByCreatedAtDesc(accountId).stream()
+		return transactionRepository.findByAccount_IdOrderByCreatedAtDesc(accountId)
+				.stream()
 				.map(TransactionService::toResponse)
 				.toList();
 	}
@@ -106,6 +109,8 @@ public class TransactionService {
 	public TransferResult transfer(Long sourceAccountId, TransferRequest request) {
 		accessGuard.requireAccountOwner(sourceAccountId);
 		String targetNumber = request.targetAccountNumber().trim();
+		String narration = trimToNull(request.narration());
+
 		Account targetPreview = accountRepository.findByAccountNumber(targetNumber)
 				.orElseThrow(() -> new ResourceNotFoundException("Target account not found: " + targetNumber));
 
@@ -116,6 +121,7 @@ public class TransactionService {
 		long lowId = Math.min(sourceAccountId, targetPreview.getId());
 		long highId = Math.max(sourceAccountId, targetPreview.getId());
 
+		// Lock rows in a stable order to avoid deadlocks for concurrent transfers.
 		Account first = accountRepository.findByIdForUpdate(lowId)
 				.orElseThrow(() -> new ResourceNotFoundException("Account not found with id: " + lowId));
 		Account second = accountRepository.findByIdForUpdate(highId)
@@ -131,7 +137,7 @@ public class TransactionService {
 			throw new AccountNotOperationalException("Currency mismatch between accounts");
 		}
 
-		BigDecimal amount = normalizeAmount(request.amount());
+		BigDecimal amount = normalizeAndValidateAmount(request.amount());
 		if (source.getBalance().compareTo(amount) < 0) {
 			throw new InsufficientFundsException("Insufficient balance for transfer");
 		}
@@ -139,24 +145,21 @@ public class TransactionService {
 		source.setBalance(source.getBalance().subtract(amount));
 		destination.setBalance(destination.getBalance().add(amount));
 
-		Transaction out = new Transaction();
-		out.setAccount(source);
-		out.setCounterpartyAccount(destination);
-		out.setTransactionType(TransactionType.TRANSFER_OUT);
-		out.setAmount(amount);
-		out.setNarration(trimToNull(request.narration()));
+		Transaction savedOut = transactionRepository.save(buildTransaction(
+				source,
+				destination,
+				TransactionType.TRANSFER_OUT,
+				amount,
+				narration
+		));
+		Transaction savedIn = transactionRepository.save(buildTransaction(
+				destination,
+				source,
+				TransactionType.TRANSFER_IN,
+				amount,
+				narration
+		));
 
-		Transaction in = new Transaction();
-		in.setAccount(destination);
-		in.setCounterpartyAccount(source);
-		in.setTransactionType(TransactionType.TRANSFER_IN);
-		in.setAmount(amount);
-		in.setNarration(trimToNull(request.narration()));
-
-		Transaction savedOut = transactionRepository.save(out);
-		Transaction savedIn = transactionRepository.save(in);
-
-		String ref = savedOut.getReference();
 		notificationService.createInApp(
 				source.getUser(),
 				"Transfer sent",
@@ -165,7 +168,9 @@ public class TransactionService {
 						source.getCurrency(),
 						amount,
 						maskAccountNumber(destination.getAccountNumber()),
-						ref));
+						savedOut.getReference()
+				)
+		);
 		notificationService.createInApp(
 				destination.getUser(),
 				"Transfer received",
@@ -174,9 +179,35 @@ public class TransactionService {
 						destination.getCurrency(),
 						amount,
 						maskAccountNumber(source.getAccountNumber()),
-						ref));
+						savedIn.getReference()
+				)
+		);
 
 		return new TransferResult(toResponse(savedOut), toResponse(savedIn));
+	}
+
+	private Account getOwnedActiveAccountForUpdate(Long accountId) {
+		accessGuard.requireAccountOwner(accountId);
+		Account account = accountRepository.findByIdForUpdate(accountId)
+				.orElseThrow(() -> new ResourceNotFoundException("Account not found with id: " + accountId));
+		requireActive(account);
+		return account;
+	}
+
+	private static Transaction buildTransaction(
+			Account account,
+			Account counterparty,
+			TransactionType type,
+			BigDecimal amount,
+			String narration
+	) {
+		Transaction tx = new Transaction();
+		tx.setAccount(account);
+		tx.setCounterpartyAccount(counterparty);
+		tx.setTransactionType(type);
+		tx.setAmount(amount);
+		tx.setNarration(narration);
+		return tx;
 	}
 
 	private static void requireActive(Account account) {
@@ -186,8 +217,20 @@ public class TransactionService {
 		}
 	}
 
+	private static BigDecimal normalizeAndValidateAmount(BigDecimal amount) {
+		BigDecimal normalized = normalizeAmount(amount);
+		validateAmount(normalized);
+		return normalized;
+	}
+
 	private static BigDecimal normalizeAmount(BigDecimal amount) {
 		return amount.setScale(2, RoundingMode.HALF_UP);
+	}
+
+	private static void validateAmount(BigDecimal amount) {
+		if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+			throw new IllegalArgumentException("Amount must be greater than zero");
+		}
 	}
 
 	private static String trimToNull(String narration) {
